@@ -3,19 +3,17 @@ import mongoose, { Document } from 'mongoose';
 
 @Schema({
   versionKey: false,
+  timestamps: true,
 })
-export class User extends Document {
+export class RefreshToken extends Document {
+  @Prop({ required: true })
+  refreshToken: string;
 
   @Prop({ required: true, type: mongoose.Types.ObjectId })
   userId: mongoose.Types.ObjectId;
 
-
-  @Prop({required: true, unique: true})
-  email: string;
-
-  @Prop({required: true })
-  password: string;
-
+  @Prop({ required: true })
+  expiryDate: Date;
 }
 
-export const UserSchema = SchemaFactory.createForClass(User);
+export const RefreshTokenSchema = SchemaFactory.createForClass(RefreshToken);

@@ -1,7 +1,6 @@
 import {
   BadRequestException,
   Injectable,
-  Res,
   UnauthorizedException,
 } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
@@ -11,30 +10,44 @@ import { SingUpDto } from './dtos/singUpDto';
 import * as bcrypt from 'bcrypt';
 import { LoginDto } from './dtos/loginDto';
 import { JwtService } from '@nestjs/jwt';
+import { RefreshToken } from './schemas/refresh-token.schema';
+import { v4 as uuidv4 } from 'uuid';
+uuidv4(); // ⇨ '9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d';
 
 @Injectable()
 export class AuthService {
   constructor(
     @InjectModel(User.name)
     private userModel: Model<User>,
+    @InjectModel(RefreshToken.name)
+    private refreshTokenModel: Model<RefreshToken>,
     private jwtService: JwtService,
   ) {}
 
+  //#signUp
   async singUp(signUpData: SingUpDto) {
     const { email, password } = signUpData;
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    try {
-      return await this.userModel.create({
-        email,
-        password: hashedPassword,
-      });
-    } catch {
-      return new BadRequestException('email has already exist');
+    const emailInUse = await this.userModel.findOne({
+      email: signUpData.email,
+    });
+    if (emailInUse) {
+      throw new BadRequestException('Email already in use');
+    }
+     const user = await this.userModel.create({
+      email,
+      password: hashedPassword
+    });
+
+    return {
+      email: user.email,
+      _id: user.id
     }
   }
 
-  async login(loginData: LoginDto) {
+    //#signIn
+  async signIn(loginData: LoginDto) {
     const { email, password } = loginData;
     const user = await this.userModel.findOne({ email });
     if (!user) {
@@ -47,8 +60,44 @@ export class AuthService {
     return this.generateUserTokens(user._id);
   }
 
+  //#refreshToken
+
   async generateUserTokens(userId) {
-    const access_token = this.jwtService.signAsync({ userId });
-    return access_token;
+    const accessToken = this.jwtService.sign({ userId });
+    const refreshToken = uuidv4();
+    await this.storeRefreshToken(refreshToken, userId);
+    return {
+     accessToken: accessToken,
+     refreshToken: refreshToken,
+     userId: userId
   }
+}
+
+async storeRefreshToken(refreshToken: string, userId: string) {
+  const expiryDate = new Date();
+  expiryDate.setDate(expiryDate.getDate() + 3);
+  await this.refreshTokenModel.updateOne({userId},{ $set: {expiryDate, refreshToken}}, {upsert:true});
+}
+
+
+async refreshTokens(refreshToken: string) {
+  const token = await this.refreshTokenModel.findOne({
+    refreshToken: refreshToken,
+    expiryDate: { $gte: new Date()},
+  });
+  if (!token) {
+    throw new UnauthorizedException('invalid refresh token');
+  }
+  return this.generateUserTokens(token.userId);
+}
+
+
+//#getUsers
+async getUserById(userId: string) {
+  const user = await this.userModel.findById(userId);
+  return {
+    _id: user._id,
+    email: user.email,
+  }
+}
 }
