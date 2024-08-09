@@ -1,16 +1,27 @@
-import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  Res,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { SingUpDto } from './dtos/singUpDto';
 import { LoginDto } from './dtos/loginDto';
 import { AuthGuard } from './auth.guard';
-import { User } from './schemas/user.schema';
 import { RefreshTokenDto } from './dtos/RefreshTokenDto';
-// import { Response } from 'express';
+import { response, Response } from 'express';
+import { JwtService } from '@nestjs/jwt';
 
 // @UseGuards(AuthGuard)
 @Controller('auth')
 export class AuthController {
-  constructor(private readonly authService: AuthService) {}
+  constructor(
+    private readonly authService: AuthService,
+    private jwtService: JwtService,
+  ) {}
 
   //#signUp
   @Post('signUp')
@@ -22,26 +33,44 @@ export class AuthController {
   @Post('signIn')
   async signIn(
     @Body() loginData: LoginDto,
-    // @Res({passthrough: true}) response: Response
+    @Res({ passthrough: true }) response: Response,
   ) {
-    return this.authService.signIn(loginData);
-    // response.cookie('access_token', access_token, {httpOnly: true})
-    // return {
-    //   message: 'login successful'
-    // }
+    const accessToken = (await this.authService.signIn(loginData)).accessToken;
+    const refreshToken = (await this.authService.signIn(loginData))
+      .refreshToken;
+    response.status(200);
+    response.cookie('refresh_token', refreshToken, {
+      httpOnly: true,
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    });
+    return {
+      accessToken: accessToken,
+    };
   }
 
-  //#refresh 
+  //#refresh
   @Post('refresh')
   async refreshTokens(@Body() refreshTokenDto: RefreshTokenDto) {
-    return this.authService.refreshTokens(refreshTokenDto.refreshToken);
+    const accessToken = (await this.authService.refreshTokens(refreshTokenDto.refreshToken)).accessToken;
+    return {
+      accessToken: accessToken
+    }
   }
 
+  //#logout
+  @Post('logout')
+  async logout(@Res({ passthrough: true }) response: Response) {
+    response.status(200);
+    response.clearCookie('refresh_token');
+    return {
+      message: 'successful logout',
+    };
+  }
 
   //#getUserById
   @UseGuards(AuthGuard)
   @Get('user')
-  async getUserById(@Req() req){
+  async getUserById(@Req() req) {
     return this.authService.getUserById(req.userId);
   }
 }

@@ -12,7 +12,8 @@ import { LoginDto } from './dtos/loginDto';
 import { JwtService } from '@nestjs/jwt';
 import { RefreshToken } from './schemas/refresh-token.schema';
 import { v4 as uuidv4 } from 'uuid';
-uuidv4(); // ⇨ '9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d';
+
+// uuidv4(); // ⇨ '9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d';
 
 @Injectable()
 export class AuthService {
@@ -51,11 +52,11 @@ export class AuthService {
     const { email, password } = loginData;
     const user = await this.userModel.findOne({ email });
     if (!user) {
-      throw new UnauthorizedException('invalid credentials');
+      throw new BadRequestException('invalid credentials');
     }
     const passwordMatch = await bcrypt.compare(password, user.password);
     if (!passwordMatch) {
-      throw new UnauthorizedException('invalid credentials');
+      throw new BadRequestException('invalid credentials');
     }
     return this.generateUserTokens(user._id);
   }
@@ -63,19 +64,21 @@ export class AuthService {
   //#refreshToken
 
   async generateUserTokens(userId) {
-    const accessToken = this.jwtService.sign({ userId });
-    const refreshToken = uuidv4();
+    const accessToken = await this.jwtService.signAsync({ userId }, {expiresIn: '20s'});
+    const refreshToken = await this.jwtService.signAsync({ userId });
+
     await this.storeRefreshToken(refreshToken, userId);
+
+
     return {
      accessToken: accessToken,
-     refreshToken: refreshToken,
-     userId: userId
+     refreshToken: refreshToken
   }
 }
 
 async storeRefreshToken(refreshToken: string, userId: string) {
   const expiryDate = new Date();
-  expiryDate.setDate(expiryDate.getDate() + 3);
+  expiryDate.setDate(expiryDate.getDate() + 7);
   await this.refreshTokenModel.updateOne({userId},{ $set: {expiryDate, refreshToken}}, {upsert:true});
 }
 
